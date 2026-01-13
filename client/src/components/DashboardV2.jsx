@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Truck, AlertTriangle, CheckCircle, Clock, DollarSign, Activity, Wrench, RefreshCw, Shuffle, Server } from 'lucide-react';
-import axios from 'axios';
+import { get, post } from '../utils/api-client';
 import AgentFeedV2 from './AgentFeedV2';
 import AgentPipelineV2 from './AgentPipelineV2';
 import TicketListV2 from './TicketListV2';
@@ -34,8 +34,8 @@ const DashboardV2 = ({ onReportDataUpdate }) => {
 
   const fetchStats = async () => {
     try {
-      const response = await axios.get('http://localhost:8000/api/stats');
-      setStats(response.data.stats);
+      const data = await get('/api/stats');
+      setStats(data.stats);
     } catch (error) {
       console.error('Error fetching stats:', error);
     }
@@ -43,8 +43,8 @@ const DashboardV2 = ({ onReportDataUpdate }) => {
 
   const fetchFleetData = async () => {
     try {
-      const response = await axios.get('http://localhost:8000/api/fleet-data');
-      setFleetData(response.data.data);
+      const data = await get('/api/fleet-data');
+      setFleetData(data.data);
     } catch (error) {
       console.error('Error fetching fleet data:', error);
     }
@@ -52,8 +52,8 @@ const DashboardV2 = ({ onReportDataUpdate }) => {
 
   const fetchTickets = async () => {
     try {
-      const response = await axios.get('http://localhost:8000/api/tickets');
-      setTickets(response.data.data);
+      const data = await get('/api/tickets');
+      setTickets(data.data);
     } catch (error) {
       console.error('Error fetching tickets:', error);
     }
@@ -61,15 +61,15 @@ const DashboardV2 = ({ onReportDataUpdate }) => {
 
   const generateRandomData = async () => {
     try {
-      const response = await axios.post('http://localhost:8000/api/generate-random-data');
-      if (response.data.status === 'success') {
+      const response = await post('/api/generate-random-data');
+      if (response.status === 'success') {
         setTickets([]);
         setAgentMessages([]);
         setSummary(null);
         await fetchFleetData();
         await fetchStats();
         await fetchTickets();
-        console.log(`Generated ${response.data.data_count} random fleet parts`);
+        console.log(`Generated ${response.data_count} random fleet parts`);
       }
     } catch (error) {
       console.error('Error generating random data:', error);
@@ -78,8 +78,8 @@ const DashboardV2 = ({ onReportDataUpdate }) => {
 
   const resetData = async () => {
     try {
-      const response = await axios.post('http://localhost:8000/api/reset-data');
-      if (response.data.status === 'success') {
+      const response = await post('/api/reset-data');
+      if (response.status === 'success') {
         setTickets([]);
         setAgentMessages([]);
         setSummary(null);
@@ -101,7 +101,8 @@ const DashboardV2 = ({ onReportDataUpdate }) => {
 
     // Use EventSource for streaming updates
     try {
-      const eventSource = new EventSource('http://localhost:8000/api/check-fleet-stream');
+      const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      const eventSource = new EventSource(`${baseURL}/api/check-fleet-stream`);
 
       eventSource.onmessage = (event) => {
         try {
@@ -195,7 +196,17 @@ const DashboardV2 = ({ onReportDataUpdate }) => {
       };
 
       eventSource.onerror = (err) => {
-        console.error("EventSource failed:", err);
+        console.error("EventSource connection failed:", err);
+        const status = err?.target?.readyState;
+        console.error("ReadyState:", status, "(0=connecting, 1=open, 2=closed)");
+        
+        setAgentMessages(prev => [...prev, {
+          step: 'error',
+          status: 'error',
+          message: 'Connection failed. Check server CORS configuration and ensure backend is running.',
+          timestamp: new Date().toISOString()
+        }]);
+        
         eventSource.close();
         setIsProcessing(false);
       };

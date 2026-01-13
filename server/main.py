@@ -9,13 +9,15 @@ load_dotenv()
 
 app = FastAPI(title="Engine Health Monitor API")
 
-# Enable CORS for localhost:5173 (Vite dev server)
+# Enable CORS for all origins (simplified for development/streaming)
+# For production, specify exact domains like: ["https://yourdomain.com"]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "*"],
-    allow_credentials=True,
+    allow_origins=["*"],  # Allow all origins for streaming
+    allow_credentials=False,  # EventSource doesn't support credentials with *
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 app.include_router(router, prefix="/api")

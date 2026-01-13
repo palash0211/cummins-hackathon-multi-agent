@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { Truck, AlertTriangle, CheckCircle, Clock, DollarSign, Activity, Wrench, RefreshCw, Shuffle } from 'lucide-react'
-import axios from 'axios'
+import { get, post } from '../utils/api-client'
 import AgentFeed from './AgentFeed'
 import AgentPipeline from './AgentPipeline'
 import TicketList from './TicketList'
@@ -33,8 +33,8 @@ const Dashboard = ({ onReportDataUpdate }) => {
 
   const fetchStats = async () => {
     try {
-      const response = await axios.get('http://localhost:8000/api/stats')
-      setStats(response.data.stats)
+      const data = await get('/api/stats')
+      setStats(data.stats)
     } catch (error) {
       console.error('Error fetching stats:', error)
     }
@@ -42,8 +42,8 @@ const Dashboard = ({ onReportDataUpdate }) => {
 
   const fetchFleetData = async () => {
     try {
-      const response = await axios.get('http://localhost:8000/api/fleet-data')
-      setFleetData(response.data.data)
+      const data = await get('/api/fleet-data')
+      setFleetData(data.data)
     } catch (error) {
       console.error('Error fetching fleet data:', error)
     }
@@ -51,8 +51,8 @@ const Dashboard = ({ onReportDataUpdate }) => {
 
   const fetchTickets = async () => {
     try {
-      const response = await axios.get('http://localhost:8000/api/tickets')
-      setTickets(response.data.data)
+      const data = await get('/api/tickets')
+      setTickets(data.data)
     } catch (error) {
       console.error('Error fetching tickets:', error)
     }
@@ -60,8 +60,8 @@ const Dashboard = ({ onReportDataUpdate }) => {
 
   const generateRandomData = async () => {
     try {
-      const response = await axios.post('http://localhost:8000/api/generate-random-data')
-      if (response.data.status === 'success') {
+      const response = await post('/api/generate-random-data')
+      if (response.status === 'success') {
         // Clear tickets and refresh data
         setTickets([])
         setAgentMessages([])
@@ -70,7 +70,7 @@ const Dashboard = ({ onReportDataUpdate }) => {
         await fetchStats()
         await fetchTickets() // Also refresh tickets
         // Simple console log instead of alert
-        console.log(`Generated ${response.data.data_count} random fleet parts`)
+        console.log(`Generated ${response.data_count} random fleet parts`)
       }
     } catch (error) {
       console.error('Error generating random data:', error)
@@ -79,8 +79,8 @@ const Dashboard = ({ onReportDataUpdate }) => {
 
   const resetData = async () => {
     try {
-      const response = await axios.post('http://localhost:8000/api/reset-data')
-      if (response.data.status === 'success') {
+      const response = await post('/api/reset-data')
+      if (response.status === 'success') {
         // Clear tickets and refresh data
         setTickets([])
         setAgentMessages([])
@@ -103,17 +103,17 @@ const Dashboard = ({ onReportDataUpdate }) => {
     setPipelineData(null)
 
     try {
-      const response = await axios.post('http://localhost:8000/api/check-fleet')
+      const response = await post('/api/check-fleet')
       
       // Set pipeline data for visualization
-      if (response.data.steps) {
-        setPipelineData(response.data.steps)
+      if (response.steps) {
+        setPipelineData(response.steps)
       }
       
       // Store full data for detailed report
-      const monitoring = response.data.monitoring
-      const research = response.data.research
-      const diagnosis = response.data.diagnosis
+      const monitoring = response.monitoring
+      const research = response.research
+      const diagnosis = response.diagnosis
       
       setMonitoringData(monitoring)
       setResearchData(research)
@@ -140,7 +140,7 @@ const Dashboard = ({ onReportDataUpdate }) => {
           {
             step: 'dispatch_agent',
             status: 'completed',
-            message: `Created ${response.data.dispatch?.tickets?.length || 0} service tickets`
+            message: `Created ${response.dispatch?.tickets?.length || 0} service tickets`
           }
         ]
         setAgentMessages(messages)
@@ -149,7 +149,7 @@ const Dashboard = ({ onReportDataUpdate }) => {
         if (onReportDataUpdate) {
           onReportDataUpdate({
             agentMessages: messages,
-            tickets: response.data.dispatch?.tickets || [],
+            tickets: response.dispatch?.tickets || [],
             researchData: research,
             diagnosisData: diagnosis,
             monitoringData: monitoring
@@ -157,12 +157,12 @@ const Dashboard = ({ onReportDataUpdate }) => {
         }
       }
 
-      if (response.data.dispatch?.tickets) {
-        setTickets(response.data.dispatch.tickets)
+      if (response.dispatch?.tickets) {
+        setTickets(response.dispatch.tickets)
       }
 
-      if (response.data.dispatch?.summary) {
-        setSummary(response.data.dispatch.summary)
+      if (response.dispatch?.summary) {
+        setSummary(response.dispatch.summary)
       }
 
       fetchStats()
