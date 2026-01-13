@@ -32,53 +32,71 @@ async def check_fleet_stream():
     async def run_workflow():
         try:
             # Step 1: Get fleet data
-            await q.put({"type": "step", "step": "fetching_data", "status": "started", "message": "Fetching fleet data..."})
-            fleet_data = await sheets_service.get_fleet_parts()
-            await q.put({"type": "step", "step": "fetching_data", "status": "completed", "message": f"Fetched {len(fleet_data)} records"})
+            try:
+                await q.put({"type": "step", "step": "fetching_data", "status": "started", "message": "Fetching fleet data..."})
+                fleet_data = await sheets_service.get_fleet_parts()
+                await q.put({"type": "step", "step": "fetching_data", "status": "completed", "message": f"Fetched {len(fleet_data)} records"})
+            except Exception as e:
+                await q.put({"type": "error", "step": "fetching_data", "message": f"Error fetching fleet data: {str(e)}"})
+                raise
 
             # Step 2: Monitor Agent
-            await q.put({"type": "step", "step": "monitor_agent", "status": "started", "message": "Analyzing fleet health..."})
-            monitoring_result = await monitor_agent.analyze_fleet(fleet_data)
-            await q.put({"type": "step", "step": "monitor_agent", "status": "completed", 
-                "message": f"Found {len(monitoring_result.get('critical', []))} critical issues"})
+            try:
+                await q.put({"type": "step", "step": "monitor_agent", "status": "started", "message": "Analyzing fleet health..."})
+                monitoring_result = await monitor_agent.analyze_fleet(fleet_data)
+                await q.put({"type": "step", "step": "monitor_agent", "status": "completed", 
+                    "message": f"Found {len(monitoring_result.get('critical', []))} critical issues"})
+            except Exception as e:
+                await q.put({"type": "error", "step": "monitor_agent", "message": f"Error in monitor agent: {str(e)}"})
+                raise
             
             # Step 3: Research Agent
-            critical_and_warning = monitoring_result.get("critical", []) + monitoring_result.get("warning", [])
-            await q.put({"type": "step", "step": "research_agent", "status": "started", "message": "Initiating web research..."})
-            
-            # Define callback for research agent
-            async def research_callback(data):
-                # Simply forward the data from agent to queue
-                # We might want to tag it for the frontend
-                await q.put({"type": "agent_update", "agent": "research_agent", "data": data})
-
-            research_result = await research_agent.research_parts(critical_and_warning, stream_callback=research_callback)
-            
-            await q.put({"type": "step", "step": "research_agent", "status": "completed", 
-                "message": f"Researched {research_result.get('summary', {}).get('total_parts_researched', 0)} parts"})
+            try:
+                critical_and_warning = monitoring_result.get("critical", []) + monitoring_result.get("warning", [])
+                await q.put({"type": "step", "step": "research_agent", "status": "started", "message": "Initiating web research..."})
+                
+                research_result = await research_agent.research_parts(critical_and_warning)
+                
+                await q.put({"type": "step", "step": "research_agent", "status": "completed", 
+                    "message": f"Researched {research_result.get('summary', {}).get('total_parts_researched', 0)} parts"})
+            except Exception as e:
+                await q.put({"type": "error", "step": "research_agent", "message": f"Error in research agent: {str(e)}"})
+                raise
 
             # Step 4: Diagnosis Agent
-            await q.put({"type": "step", "step": "diagnosis_agent", "status": "started", "message": "Generating diagnoses..."})
-            diagnosis_result = await diagnosis_agent.diagnose_issues(
-                monitoring_result.get("critical", []),
-                monitoring_result.get("warning", []),
-                research_result
-            )
-            await q.put({"type": "step", "step": "diagnosis_agent", "status": "completed", 
-                "message": f"Generated {len(diagnosis_result.get('recommendations', []))} recommendations"})
+            try:
+                await q.put({"type": "step", "step": "diagnosis_agent", "status": "started", "message": "Generating diagnoses..."})
+                diagnosis_result = await diagnosis_agent.diagnose_issues(
+                    monitoring_result.get("critical", []),
+                    monitoring_result.get("warning", []),
+                    research_result
+                )
+                await q.put({"type": "step", "step": "diagnosis_agent", "status": "completed", 
+                    "message": f"Generated {len(diagnosis_result.get('recommendations', []))} recommendations"})
+            except Exception as e:
+                await q.put({"type": "error", "step": "diagnosis_agent", "message": f"Error in diagnosis agent: {str(e)}"})
+                raise
 
             # Step 5: Dispatch Agent
-            await q.put({"type": "step", "step": "dispatch_agent", "status": "started", "message": "Creating service tickets..."})
-            dispatch_result = await dispatch_agent.create_tickets(diagnosis_result)
-            await q.put({"type": "step", "step": "dispatch_agent", "status": "completed", 
-                "message": f"Created {len(dispatch_result.get('tickets', []))} tickets"})
+            try:
+                await q.put({"type": "step", "step": "dispatch_agent", "status": "started", "message": "Creating service tickets..."})
+                dispatch_result = await dispatch_agent.create_tickets(diagnosis_result)
+                await q.put({"type": "step", "step": "dispatch_agent", "status": "completed", 
+                    "message": f"Created {len(dispatch_result.get('tickets', []))} tickets"})
+            except Exception as e:
+                await q.put({"type": "error", "step": "dispatch_agent", "message": f"Error in dispatch agent: {str(e)}"})
+                raise
 
             # Step 6: Save Tickets
-            await q.put({"type": "step", "step": "save_tickets", "status": "started", "message": "Syncing with external systems..."})
-            tickets = dispatch_result.get("tickets", [])
-            if tickets:
-                await sheets_service.write_service_tickets(tickets)
-            await q.put({"type": "step", "step": "save_tickets", "status": "completed", "message": "Sync complete"})
+            try:
+                await q.put({"type": "step", "step": "save_tickets", "status": "started", "message": "Syncing with external systems..."})
+                tickets = dispatch_result.get("tickets", [])
+                if tickets:
+                    await sheets_service.write_service_tickets(tickets)
+                await q.put({"type": "step", "step": "save_tickets", "status": "completed", "message": "Sync complete"})
+            except Exception as e:
+                await q.put({"type": "error", "step": "save_tickets", "message": f"Error saving tickets: {str(e)}"})
+                raise
 
             # Final Result Payload
             final_payload = {
@@ -90,7 +108,10 @@ async def check_fleet_stream():
             await q.put({"type": "complete", "data": final_payload})
 
         except Exception as e:
-            await q.put({"type": "error", "message": str(e)})
+            print(f"[ERROR] Stream workflow failed: {str(e)}", flush=True)
+            import traceback
+            traceback.print_exc()
+            await q.put({"type": "error", "message": f"Workflow failed: {str(e)}", "traceback": traceback.format_exc()})
         finally:
             await q.put(None)  # Signal generator to stop
 
@@ -183,8 +204,10 @@ async def check_fleet():
         }
 
     except Exception as e:
-        print(f"Error in check-fleet: {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        print(f"[ERROR] check-fleet endpoint failed: {str(e)}", flush=True)
+        print(traceback.format_exc(), flush=True)
+        raise HTTPException(status_code=500, detail=f"Fleet check failed: {str(e)}")
 
 
 
@@ -199,7 +222,10 @@ async def get_fleet_data():
             "data": data
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        print(f"[ERROR] fleet-data endpoint failed: {str(e)}", flush=True)
+        print(traceback.format_exc(), flush=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch fleet data: {str(e)}")
 
 @router.get("/tickets")
 async def get_tickets():
@@ -212,7 +238,10 @@ async def get_tickets():
             "data": tickets
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        print(f"[ERROR] tickets endpoint failed: {str(e)}", flush=True)
+        print(traceback.format_exc(), flush=True)
+        raise HTTPException(status_code=500, detail=f"Failed to fetch tickets: {str(e)}")
 
 @router.get("/stats")
 async def get_stats():
@@ -255,7 +284,11 @@ async def get_stats():
             }
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        print(f"[ERROR] stats endpoint failed: {str(e)}", flush=True)
+        print(traceback.format_exc(), flush=True)
+        raise HTTPException(status_code=500, detail=f"Failed to calculate stats: {str(e)}")
+
 @router.post("/generate-random-data")
 async def generate_random_data():
     """Generate random fleet data for demo purposes"""
@@ -273,7 +306,10 @@ async def generate_random_data():
             "tickets_cleared": True
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        print(f"[ERROR] generate-random-data endpoint failed: {str(e)}", flush=True)
+        print(traceback.format_exc(), flush=True)
+        raise HTTPException(status_code=500, detail=f"Failed to generate random data: {str(e)}")
 
 @router.post("/reset-data")
 async def reset_data():
@@ -292,4 +328,7 @@ async def reset_data():
             "tickets_cleared": True
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        import traceback
+        print(f"[ERROR] reset-data endpoint failed: {str(e)}", flush=True)
+        print(traceback.format_exc(), flush=True)
+        raise HTTPException(status_code=500, detail=f"Failed to reset data: {str(e)}")

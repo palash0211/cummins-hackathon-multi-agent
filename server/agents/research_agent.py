@@ -53,40 +53,44 @@ Respond ONLY in valid JSON:
 
 async def research_parts(parts_list: List[Dict], stream_callback=None) -> Dict:
     """Research parts using web intelligence and AI analysis"""
-    print("🌐 Research Agent: Starting web intelligence gathering...")
-    if stream_callback:
-        await stream_callback({"step": "research_agent", "status": "started", "message": "Starting web intelligence gathering..."})
-    
-    # Extract unique part names
-    part_names = list(set([p.get("part", "") for p in parts_list if p.get("part")]))
-    
-    if not part_names:
-        print("⚠️  No parts to research")
-        return {"parts_research": [], "summary": {"total_parts_researched": 0}}
-    
-    print(f"📋 Researching {len(part_names)} unique parts: {part_names}")
-    
-    # Gather web intelligence
-    web_data = await scrape_part_info(part_names, stream_callback)
-    
-    # Use LLM to analyze and synthesize research
-    # Prepare concise web data summary to avoid token limits
-    web_summary = {}
-    for part, data in web_data.items():
-        web_summary[part] = {
-            "sources_checked": data.get("sources_checked", 0),
-            "pages_scraped": data.get("pages_scraped", 0),
-            "sources_scraped": data.get("sources_scraped", []),
-            "has_recalls": len(data.get("web_content", {}).get("recalls", [])) > 0,
-            "has_pricing": len(data.get("web_content", {}).get("pricing", [])) > 0,
-            "has_failures": len(data.get("web_content", {}).get("failure_reports", [])) > 0,
-            # Include first 300 chars of each content type
-            "recall_snippet": data.get("web_content", {}).get("recalls", [""])[0][:300] if data.get("web_content", {}).get("recalls") else "",
-            "pricing_snippet": data.get("web_content", {}).get("pricing", [""])[0][:300] if data.get("web_content", {}).get("pricing") else "",
-            "failure_snippet": data.get("web_content", {}).get("failure_reports", [""])[0][:300] if data.get("web_content", {}).get("failure_reports") else ""
-        }
-    
-    user_message = f"""Research these Cummins engine parts and provide comprehensive market intelligence:
+    try:
+        print("[RESEARCH] Starting web intelligence gathering...", flush=True)
+        if stream_callback:
+            await stream_callback({"step": "research_agent", "status": "started", "message": "Starting web intelligence gathering..."})
+        
+        # Extract unique part names
+        part_names = list(set([p.get("part", "") for p in parts_list if p.get("part")]))
+        print(f"[RESEARCH] Found {len(part_names)} unique parts to research", flush=True)
+        
+        if not part_names:
+            print("[RESEARCH] No parts to research", flush=True)
+            return {"parts_research": [], "summary": {"total_parts_researched": 0}}
+        
+        print(f"[RESEARCH] Researching parts: {part_names}", flush=True)
+        
+        # Gather web intelligence
+        print("[RESEARCH] Starting web scraping...", flush=True)
+        web_data = await scrape_part_info(part_names, stream_callback)
+        print("[RESEARCH] Web scraping complete", flush=True)
+        
+        # Use LLM to analyze and synthesize research
+        # Prepare concise web data summary to avoid token limits
+        web_summary = {}
+        for part, data in web_data.items():
+            web_summary[part] = {
+                "sources_checked": data.get("sources_checked", 0),
+                "pages_scraped": data.get("pages_scraped", 0),
+                "sources_scraped": data.get("sources_scraped", []),
+                "has_recalls": len(data.get("web_content", {}).get("recalls", [])) > 0,
+                "has_pricing": len(data.get("web_content", {}).get("pricing", [])) > 0,
+                "has_failures": len(data.get("web_content", {}).get("failure_reports", [])) > 0,
+                # Include first 300 chars of each content type
+                "recall_snippet": data.get("web_content", {}).get("recalls", [""])[0][:300] if data.get("web_content", {}).get("recalls") else "",
+                "pricing_snippet": data.get("web_content", {}).get("pricing", [""])[0][:300] if data.get("web_content", {}).get("pricing") else "",
+                "failure_snippet": data.get("web_content", {}).get("failure_reports", [""])[0][:300] if data.get("web_content", {}).get("failure_reports") else ""
+            }
+        
+        user_message = f"""Research these Cummins engine parts and provide comprehensive market intelligence:
 
 Parts to research: {part_names}
 
@@ -102,8 +106,8 @@ For each part, analyze:
 6. Urgency multiplier (1.0-2.0 based on external risk factors)
 
 IMPORTANT: Include the sources_scraped array from the web summary in your response for each part."""
-    
-    try:
+        
+        print("[RESEARCH] Calling LLM for analysis...", flush=True)
         # Wrap the stream_callback to define the event type for thinking tokens
         async def thinking_callback(token):
             if stream_callback:
@@ -119,35 +123,43 @@ IMPORTANT: Include the sources_scraped array from the web summary in your respon
                 if part_name in web_data:
                     part_result['sources_scraped'] = web_data[part_name].get('sources_scraped', [])
         
-        print(f"✅ Research completed for {len(result.get('parts_research', []))} parts")
+        print(f"[RESEARCH] Research completed for {len(result.get('parts_research', []))} parts", flush=True)
         if stream_callback:
             await stream_callback({"step": "research_agent", "status": "completed", "message": f"Research completed for {len(result.get('parts_research', []))} parts"})
 
         if result.get('summary', {}).get('parts_with_recalls', 0) > 0:
-            print(f"⚠️  ALERT: {result['summary']['parts_with_recalls']} part(s) under recall!")
+            print(f"[RESEARCH] ALERT: {result['summary']['parts_with_recalls']} part(s) under recall!", flush=True)
         
         return result
     except Exception as e:
-        print(f"❌ Research Agent error: {e}")
+        import traceback
+        print(f"[ERROR RESEARCH] Fatal error in research_parts: {str(e)}", flush=True)
+        print(f"[ERROR RESEARCH] Traceback: {traceback.format_exc()}", flush=True)
         if stream_callback:
             await stream_callback({"step": "error", "message": str(e)})
         return {"parts_research": [], "summary": {"total_parts_researched": 0, "error": str(e)}}
 
 async def scrape_part_info(part_names: List[str], stream_callback=None) -> Dict:
     """Gather web intelligence for parts using multiple search strategies"""
-    print(f"🔍 Searching web for {len(part_names)} parts...")
-    
-    results = {}
-    total_searches = 0
-    total_pages_scraped = 0
-    
-    for part_name in part_names:
-        print(f"🌐 Researching: {part_name}")
-        if stream_callback:
-            await stream_callback({"step": "research_agent", "status": "searching", "message": f"Searching web for {part_name}..."})
-            
-        part_data = await search_and_scrape_part(part_name, stream_callback)
-        results[part_name] = part_data
+    try:
+        print(f"[RESEARCH] Scraping web for {len(part_names)} parts...", flush=True)
+        
+        results = {}
+        total_searches = 0
+        total_pages_scraped = 0
+        
+        for part_name in part_names:
+            try:
+                print(f"[RESEARCH] Processing part: {part_name}", flush=True)
+                if stream_callback:
+                    await stream_callback({"step": "research_agent", "status": "searching", "message": f"Searching web for {part_name}..."})
+                    
+                part_data = await search_and_scrape_part(part_name, stream_callback)
+                results[part_name] = part_data
+            except Exception as e:
+                print(f"[ERROR RESEARCH] Error scraping {part_name}: {str(e)}", flush=True)
+                results[part_name] = {"sources_checked": 0, "pages_scraped": 0, "sources_scraped": [], "web_content": {}}
+                continue
         total_searches += part_data.get("searches_performed", 0)
         total_pages_scraped += part_data.get("pages_scraped", 0)
     

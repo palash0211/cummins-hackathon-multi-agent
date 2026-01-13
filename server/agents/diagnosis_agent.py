@@ -37,21 +37,26 @@ Urgency scores:
 
 async def diagnose_issues(critical_parts: List[Dict], warning_parts: List[Dict], research_data: Dict = None) -> Dict:
     """Generate diagnosis recommendations with web-enriched data"""
-    parts_to_diagnose = {
-        "critical": critical_parts,
-        "warning": warning_parts
-    }
-    
-    research_context = ""
-    if research_data:
-        research_context = f"""
+    try:
+        print("[DIAGNOSIS] Starting diagnosis analysis...", flush=True)
+        print(f"[DIAGNOSIS] Critical parts: {len(critical_parts)}, Warning parts: {len(warning_parts)}", flush=True)
+        
+        parts_to_diagnose = {
+            "critical": critical_parts,
+            "warning": warning_parts
+        }
+        
+        research_context = ""
+        if research_data:
+            print("[DIAGNOSIS] Adding research data context...", flush=True)
+            research_context = f"""
 
 MARKET INTELLIGENCE (from web research):
 {str(research_data.get('parts_research', [])[:5])}
 
 Consider recall status, pricing, and failure patterns in your recommendations."""
 
-    user_message = f"""Diagnose these parts and recommend actions:
+        user_message = f"""Diagnose these parts and recommend actions:
 
 CRITICAL PARTS (>90% usage):
 {str(critical_parts)}
@@ -64,12 +69,13 @@ For each part, provide:
 2. Clear reason explaining the risk
 3. Urgency score (1-10)"""
 
-    try:
+        print("[DIAGNOSIS] Calling LLM for diagnosis...", flush=True)
         response = await run_agent(DIAGNOSIS_SYSTEM_PROMPT, user_message)
         result = parse_json(response)
 
         # Ensure the response has the expected structure
         if not result or "recommendations" not in result:
+            print("[DIAGNOSIS] Invalid response from LLM, generating defaults...", flush=True)
             # Generate default recommendations for critical parts
             default_recommendations = []
             for part in critical_parts:
@@ -90,8 +96,11 @@ For each part, provide:
                 })
             result = {"recommendations": default_recommendations}
 
+        print(f"[DIAGNOSIS] Diagnosis complete - {len(result.get('recommendations', []))} recommendations generated", flush=True)
         return result
     except Exception as e:
-        print(f"Error in diagnosis agent: {e}")
+        import traceback
+        print(f"[ERROR DIAGNOSIS] Fatal error in diagnose_issues: {str(e)}", flush=True)
+        print(f"[ERROR DIAGNOSIS] Traceback: {traceback.format_exc()}", flush=True)
         # Return empty recommendations on error
         return {"recommendations": []}

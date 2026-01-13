@@ -42,21 +42,25 @@ Respond ONLY in valid JSON format:
 
 async def create_tickets(recommendations: Dict) -> Dict:
     """Create service tickets using Claude via OpenRouter"""
-    recommendations_list = recommendations.get("recommendations", [])
+    try:
+        print("[DISPATCH] Starting ticket creation...", flush=True)
+        recommendations_list = recommendations.get("recommendations", [])
+        print(f"[DISPATCH] Processing {len(recommendations_list)} recommendations", flush=True)
 
-    if not recommendations_list:
-        return {
-            "tickets": [],
-            "summary": {
-                "total_tickets": 0,
-                "urgent_count": 0,
-                "high_count": 0,
-                "medium_count": 0,
-                "potential_savings": 0
+        if not recommendations_list:
+            print("[DISPATCH] No recommendations to process", flush=True)
+            return {
+                "tickets": [],
+                "summary": {
+                    "total_tickets": 0,
+                    "urgent_count": 0,
+                    "high_count": 0,
+                    "medium_count": 0,
+                    "potential_savings": 0
+                }
             }
-        }
 
-    user_message = f"""Create service tickets from these diagnosis recommendations:
+        user_message = f"""Create service tickets from these diagnosis recommendations:
 
 {str(recommendations_list)}
 
@@ -67,12 +71,13 @@ For each recommendation:
 4. Calculate estimated downtime saved
 5. Calculate total potential savings ($760/day per truck)"""
 
-    try:
+        print("[DISPATCH] Calling LLM to create tickets...", flush=True)
         response = await run_agent(DISPATCH_SYSTEM_PROMPT, user_message)
         result = parse_json(response)
 
         # Ensure the response has the expected structure
         if not result or "tickets" not in result:
+            print("[DISPATCH] Invalid response from LLM, generating defaults...", flush=True)
             # Generate default tickets
             result = generate_default_tickets(recommendations_list)
 
@@ -81,11 +86,14 @@ For each recommendation:
             if "created_at" not in ticket:
                 ticket["created_at"] = datetime.now().isoformat()
 
+        print(f"[DISPATCH] Ticket creation complete - {len(result.get('tickets', []))} tickets generated", flush=True)
         return result
     except Exception as e:
-        print(f"Error in dispatch agent: {e}")
+        import traceback
+        print(f"[ERROR DISPATCH] Fatal error in create_tickets: {str(e)}", flush=True)
+        print(f"[ERROR DISPATCH] Traceback: {traceback.format_exc()}", flush=True)
         # Generate default tickets on error
-        return generate_default_tickets(recommendations_list)
+        return generate_default_tickets(recommendations.get("recommendations", []))
 
 def generate_default_tickets(recommendations: List[Dict]) -> Dict:
     """Generate default tickets when API fails"""
