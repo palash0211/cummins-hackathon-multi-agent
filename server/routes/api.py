@@ -186,66 +186,7 @@ async def check_fleet():
         print(f"Error in check-fleet: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.get("/check-fleet-stream")
-async def check_fleet_stream():
-    """
-    Stream the agent processing in real-time
-    """
-    async def generate() -> AsyncGenerator[str, None]:
-        try:
-            # Step 1: Fetching data
-            yield f"data: {json.dumps({'step': 'fetching_data', 'status': 'started', 'message': 'Fetching fleet data from database...'})}\n\n"
-            fleet_data = await sheets_service.get_fleet_parts()
-            yield f"data: {json.dumps({'step': 'fetching_data', 'status': 'completed', 'message': f'Loaded {len(fleet_data)} parts from fleet database'})}\n\n"
-            await asyncio.sleep(0.5)  # Small delay for visual effect
 
-            # Step 2: Monitor Agent
-            yield f"data: {json.dumps({'step': 'monitor_agent', 'status': 'started', 'message': 'Monitor Agent analyzing fleet parts usage...'})}\n\n"
-            monitoring_result = await monitor_agent.analyze_fleet(fleet_data)
-            critical_count = len(monitoring_result.get("critical", []))
-            warning_count = len(monitoring_result.get("warning", []))
-            yield f"data: {json.dumps({'step': 'monitor_agent', 'status': 'completed', 'message': f'Found {critical_count} critical, {warning_count} warning parts', 'data': monitoring_result})}\n\n"
-            await asyncio.sleep(0.5)
-
-            # Step 3: Diagnosis Agent
-            yield f"data: {json.dumps({'step': 'diagnosis_agent', 'status': 'started', 'message': 'Diagnosis Agent evaluating risks and recommending actions...'})}\n\n"
-            diagnosis_result = await diagnosis_agent.diagnose_issues(
-                monitoring_result.get("critical", []),
-                monitoring_result.get("warning", [])
-            )
-            rec_count = len(diagnosis_result.get("recommendations", []))
-            yield f"data: {json.dumps({'step': 'diagnosis_agent', 'status': 'completed', 'message': f'Generated {rec_count} maintenance recommendations', 'data': diagnosis_result})}\n\n"
-            await asyncio.sleep(0.5)
-
-            # Step 4: Dispatch Agent
-            yield f"data: {json.dumps({'step': 'dispatch_agent', 'status': 'started', 'message': 'Dispatch Agent creating service tickets...'})}\n\n"
-            dispatch_result = await dispatch_agent.create_tickets(diagnosis_result)
-            tickets_count = len(dispatch_result.get("tickets", []))
-            savings = dispatch_result.get("summary", {}).get("potential_savings", 0)
-            yield f"data: {json.dumps({'step': 'dispatch_agent', 'status': 'completed', 'message': f'Created {tickets_count} tickets, potential savings: ${savings:,}', 'data': dispatch_result})}\n\n"
-            await asyncio.sleep(0.5)
-
-            # Step 5: Save tickets
-            yield f"data: {json.dumps({'step': 'save_tickets', 'status': 'started', 'message': 'Saving tickets to database...'})}\n\n"
-            tickets = dispatch_result.get("tickets", [])
-            if tickets:
-                await sheets_service.write_service_tickets(tickets)
-            yield f"data: {json.dumps({'step': 'save_tickets', 'status': 'completed', 'message': 'Tickets saved successfully'})}\n\n"
-
-            # Final summary
-            yield f"data: {json.dumps({'step': 'complete', 'status': 'completed', 'message': 'Fleet check complete!', 'summary': dispatch_result.get('summary', {})})}\n\n"
-
-        except Exception as e:
-            yield f"data: {json.dumps({'step': 'error', 'status': 'error', 'message': str(e)})}\n\n"
-
-    return StreamingResponse(
-        generate(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "Connection": "keep-alive",
-        }
-    )
 
 @router.get("/fleet-data")
 async def get_fleet_data():
