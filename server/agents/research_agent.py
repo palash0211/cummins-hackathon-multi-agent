@@ -156,17 +156,22 @@ async def scrape_part_info(part_names: List[str], stream_callback=None) -> Dict:
                     
                 part_data = await search_and_scrape_part(part_name, stream_callback)
                 results[part_name] = part_data
+                total_searches += part_data.get("searches_performed", 0)
+                total_pages_scraped += part_data.get("pages_scraped", 0)
             except Exception as e:
                 print(f"[ERROR RESEARCH] Error scraping {part_name}: {str(e)}", flush=True)
                 results[part_name] = {"sources_checked": 0, "pages_scraped": 0, "sources_scraped": [], "web_content": {}}
                 continue
-        total_searches += part_data.get("searches_performed", 0)
-        total_pages_scraped += part_data.get("pages_scraped", 0)
-    
-    print(f"✅ Completed {total_searches} searches")
-    print(f"📄 Scraped {total_pages_scraped} web pages")
-    
-    return results
+        
+        print(f"[RESEARCH] Completed {total_searches} searches", flush=True)
+        print(f"[RESEARCH] Scraped {total_pages_scraped} web pages", flush=True)
+        
+        return results
+    except Exception as e:
+        import traceback
+        print(f"[ERROR RESEARCH] Fatal error in scrape_part_info: {str(e)}", flush=True)
+        print(f"[ERROR RESEARCH] Traceback: {traceback.format_exc()}", flush=True)
+        return {}
 
 async def search_and_scrape_part(part_name: str, stream_callback=None) -> Dict:
     """Search and scrape information for a specific part"""
