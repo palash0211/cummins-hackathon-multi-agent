@@ -9,12 +9,15 @@ load_dotenv()
 
 app = FastAPI(title="Engine Health Monitor API")
 
-# Enable CORS for all origins (simplified for development/streaming)
-# For production, specify exact domains like: ["https://yourdomain.com"]
+# Enable CORS for specific origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Allow all origins for streaming
-    allow_credentials=False,  # EventSource doesn't support credentials with *
+    allow_origins=[
+        "https://cummins-hackathon-multi-agent-2.onrender.com",
+        "http://localhost:3000",
+        "http://localhost:5173"
+    ],
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
