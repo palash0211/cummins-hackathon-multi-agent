@@ -10,4 +10,6 @@ pydantic>=2.12,<3
 beautifulsoup4==4.12.2
 requests==2.31.0
 httpx==0.25.2
+gunicorn>=21.2,<22
+
 --only-binary=:all:
