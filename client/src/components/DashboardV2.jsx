@@ -101,7 +101,8 @@ const DashboardV2 = ({ onReportDataUpdate }) => {
 
     // Use EventSource for streaming updates
     try {
-      const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      let baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+      baseURL = baseURL.replace(/\/+$/, ''); // Remove trailing slash if any
       const eventSource = new EventSource(`${baseURL}/api/check-fleet-stream`);
 
       eventSource.onmessage = (event) => {
