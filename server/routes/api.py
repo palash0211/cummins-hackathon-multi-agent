@@ -16,109 +16,213 @@ async def health_check():
 @router.get("/check-fleet-stream")
 async def check_fleet_stream():
     """
-    Streaming version of check-fleet.
-    Returns Server-Sent Events (SSE) for real-time updates.
+    Streaming multi-agent orchestration using OpenAI SDK.
+    Returns Server-Sent Events (SSE) with live agent reasoning.
     """
-    q = asyncio.Queue()
+    from openai import AsyncOpenAI
+    import os
+    import httpx
+    
+    # Create custom HTTP client with SSL verification disabled (for corporate proxies)
+    http_client = httpx.AsyncClient(
+        verify=False,
+        headers={
+            "HTTP-Referer": "https://cummins-engine-monitor.app",
+            "X-Title": "Cummins Fleet Monitor"
+        }
+    )
+    
+    client = AsyncOpenAI(
+        api_key=os.getenv("OPENAI_API_KEY"),
+        base_url=os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
+        http_client=http_client
+    )
 
-    async def event_generator():
-        while True:
-            data = await q.get()
-            if data is None:  # Done signal
-                break
-            # SSE format: data: <json>\n\n
-            yield f"data: {json.dumps(data)}\n\n"
-
-    async def run_workflow():
+    async def stream_agent_orchestration():
         try:
-            # Step 1: Get fleet data
-            try:
-                await q.put({"type": "step", "step": "fetching_data", "status": "started", "message": "Fetching fleet data..."})
-                fleet_data = await sheets_service.get_fleet_parts()
-                await q.put({"type": "step", "step": "fetching_data", "status": "completed", "message": f"Fetched {len(fleet_data)} records"})
-            except Exception as e:
-                await q.put({"type": "error", "step": "fetching_data", "message": f"Error fetching fleet data: {str(e)}"})
-                raise
-
-            # Step 2: Monitor Agent
-            try:
-                await q.put({"type": "step", "step": "monitor_agent", "status": "started", "message": "Analyzing fleet health..."})
-                monitoring_result = await monitor_agent.analyze_fleet(fleet_data)
-                await q.put({"type": "step", "step": "monitor_agent", "status": "completed", 
-                    "message": f"Found {len(monitoring_result.get('critical', []))} critical issues"})
-            except Exception as e:
-                await q.put({"type": "error", "step": "monitor_agent", "message": f"Error in monitor agent: {str(e)}"})
-                raise
+            # Fetch fleet data
+            yield f"data: {json.dumps({'type': 'agent_update', 'agent': 'system', 'message': '🔍 Fetching fleet data...'})}\n\n"
+            fleet_data = await sheets_service.get_fleet_parts()
+            yield f"data: {json.dumps({'type': 'agent_update', 'agent': 'system', 'message': f'✓ Loaded {len(fleet_data)} parts from fleet'})}\n\n"
             
-            # Step 3: Research Agent
+            # Prepare compact data for agents
+            parts_summary = []
+            for part in fleet_data[:10]:  # Limit to avoid overload
+                try:
+                    current = int(part.get("current_hours", 0))
+                    max_hours = int(part.get("max_hours", 1))
+                    usage = round((current / max_hours * 100), 1) if max_hours > 0 else 0
+                    parts_summary.append({
+                        "truck": part.get("truck_id"),
+                        "part": part.get("part_name"),
+                        "usage": usage,
+                        "hours": f"{current}/{max_hours}"
+                    })
+                except:
+                    continue
+            
+            # Agent 1: Monitor Agent - Stream analysis
+            yield f"data: {json.dumps({'type': 'agent_update', 'agent': 'monitor_agent', 'message': '🔎 Monitor Agent analyzing fleet health...'})}\n\n"
+            
+            monitor_prompt = f"""You are a Fleet Monitor Agent. Analyze these parts and identify critical issues (>90% usage).
+Be concise and actionable. Parts data: {json.dumps(parts_summary)}
+
+Provide a brief summary of critical parts found."""
+
+            stream = await client.chat.completions.create(
+                model=os.getenv("OPENAI_MODEL", "gpt-4"),
+                messages=[{"role": "user", "content": monitor_prompt}],
+                stream=True,
+                max_tokens=500
+            )
+            
+            monitor_response = ""
+            async for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    monitor_response += content
+                    yield f"data: {json.dumps({'type': 'agent_update', 'agent': 'monitor_agent', 'message': content})}\n\n"
+            
+            yield f"data: {json.dumps({'type': 'agent_complete', 'agent': 'monitor_agent', 'summary': monitor_response[:200]})}\n\n"
+            
+            # Agent 2: Research Agent
+            yield f"data: {json.dumps({'type': 'agent_update', 'agent': 'research_agent', 'message': '🌐 Research Agent checking market data...'})}\n\n"
+            
+            research_prompt = f"""You are a Research Agent. Based on this monitor report: "{monitor_response[:300]}"
+
+Provide brief market insights and replacement part recommendations. Be concise."""
+
+            stream = await client.chat.completions.create(
+                model=os.getenv("OPENAI_MODEL", "gpt-4"),
+                messages=[{"role": "user", "content": research_prompt}],
+                stream=True,
+                max_tokens=400
+            )
+            
+            research_response = ""
+            async for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    research_response += content
+                    yield f"data: {json.dumps({'type': 'agent_update', 'agent': 'research_agent', 'message': content})}\n\n"
+            
+            yield f"data: {json.dumps({'type': 'agent_complete', 'agent': 'research_agent', 'summary': research_response[:200]})}\n\n"
+            
+            # Agent 3: Diagnosis Agent
+            yield f"data: {json.dumps({'type': 'agent_update', 'agent': 'diagnosis_agent', 'message': '⚕️ Diagnosis Agent generating recommendations...'})}\n\n"
+            
+            diagnosis_prompt = f"""You are a Diagnosis Agent. Based on:
+Monitor: {monitor_response[:200]}
+Research: {research_response[:200]}
+
+Provide 2-3 priority action items. Be concise and specific."""
+
+            stream = await client.chat.completions.create(
+                model=os.getenv("OPENAI_MODEL", "gpt-4"),
+                messages=[{"role": "user", "content": diagnosis_prompt}],
+                stream=True,
+                max_tokens=300
+            )
+            
+            diagnosis_response = ""
+            async for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    diagnosis_response += content
+                    yield f"data: {json.dumps({'type': 'agent_update', 'agent': 'diagnosis_agent', 'message': content})}\n\n"
+            
+            yield f"data: {json.dumps({'type': 'agent_complete', 'agent': 'diagnosis_agent', 'summary': diagnosis_response[:200]})}\n\n"
+            
+            # Agent 4: Dispatch Agent
+            yield f"data: {json.dumps({'type': 'agent_update', 'agent': 'dispatch_agent', 'message': '📋 Dispatch Agent creating service tickets...'})}\n\n"
+            
+            dispatch_prompt = f"""You are a Dispatch Agent. Based on diagnosis: "{diagnosis_response[:200]}"
+
+Create service tickets in JSON format. Each ticket should have:
+- truck_id: the truck identifier
+- part_name: the part that needs attention
+- priority: "urgent", "high", or "medium"
+- description: brief action needed
+- estimated_cost: number (estimated repair cost)
+
+Return ONLY a JSON array with 2-3 tickets. Example format:
+[{{"truck_id": "TRK-001", "part_name": "Air Filter", "priority": "urgent", "description": "Replace immediately", "estimated_cost": 250}}]"""
+
+            stream = await client.chat.completions.create(
+                model=os.getenv("OPENAI_MODEL", "gpt-4"),
+                messages=[{"role": "user", "content": dispatch_prompt}],
+                stream=True,
+                max_tokens=500
+            )
+            
+            dispatch_response = ""
+            async for chunk in stream:
+                if chunk.choices[0].delta.content:
+                    content = chunk.choices[0].delta.content
+                    dispatch_response += content
+                    yield f"data: {json.dumps({'type': 'agent_update', 'agent': 'dispatch_agent', 'message': content})}\n\n"
+            
+            yield f"data: {json.dumps({'type': 'agent_complete', 'agent': 'dispatch_agent'})}\n\n"
+            
+            # Parse tickets from dispatch response and save to sheet
+            tickets = []
             try:
-                critical_and_warning = monitoring_result.get("critical", []) + monitoring_result.get("warning", [])
-                await q.put({"type": "step", "step": "research_agent", "status": "started", "message": "Initiating web research..."})
+                # Extract JSON from response (handle markdown code blocks)
+                import re
+                json_match = re.search(r'\[\s*\{.*?\}\s*\]', dispatch_response, re.DOTALL)
+                if json_match:
+                    tickets_data = json.loads(json_match.group(0))
+                    
+                    # Create proper ticket format with all required fields
+                    for idx, ticket in enumerate(tickets_data[:3]):  # Limit to 3 tickets
+                        tickets.append({
+                            "ticket_id": f"TKT-{len(await sheets_service.get_service_tickets()) + idx + 1:04d}",
+                            "truck_id": ticket.get("truck_id", "TRK-000"),
+                            "part_name": ticket.get("part_name", "Unknown Part"),
+                            "priority": ticket.get("priority", "medium"),
+                            "description": ticket.get("description", "Maintenance required"),
+                            "estimated_cost": ticket.get("estimated_cost", 0),
+                            "status": "pending",
+                            "created_at": "2024-01-14"
+                        })
+                    
+                    # Save tickets to Google Sheet
+                    if tickets:
+                        await sheets_service.write_service_tickets(tickets)
+                        yield f"data: {json.dumps({'type': 'agent_update', 'agent': 'system', 'message': f'✓ Created {len(tickets)} service tickets'})}\n\n"
+                        yield f"data: {json.dumps({'type': 'tickets_created', 'tickets': tickets})}\n\n"
                 
-                research_result = await research_agent.research_parts(critical_and_warning)
+            except Exception as e:
+                print(f"[WARN] Could not parse tickets: {e}", flush=True)
+                # Create fallback tickets from parts_summary
+                for idx, part in enumerate(parts_summary[:3]):
+                    if part.get("usage", 0) > 85:
+                        tickets.append({
+                            "ticket_id": f"TKT-{len(await sheets_service.get_service_tickets()) + idx + 1:04d}",
+                            "truck_id": part.get("truck", "TRK-000"),
+                            "part_name": part.get("part", "Unknown Part"),
+                            "priority": "urgent" if part.get("usage", 0) > 90 else "high",
+                            "description": f"Part at {part.get('usage')}% usage - {part.get('hours')} hours",
+                            "estimated_cost": 500,
+                            "status": "pending",
+                            "created_at": "2024-01-14"
+                        })
                 
-                await q.put({"type": "step", "step": "research_agent", "status": "completed", 
-                    "message": f"Researched {research_result.get('summary', {}).get('total_parts_researched', 0)} parts"})
-            except Exception as e:
-                await q.put({"type": "error", "step": "research_agent", "message": f"Error in research agent: {str(e)}"})
-                raise
-
-            # Step 4: Diagnosis Agent
-            try:
-                await q.put({"type": "step", "step": "diagnosis_agent", "status": "started", "message": "Generating diagnoses..."})
-                diagnosis_result = await diagnosis_agent.diagnose_issues(
-                    monitoring_result.get("critical", []),
-                    monitoring_result.get("warning", []),
-                    research_result
-                )
-                await q.put({"type": "step", "step": "diagnosis_agent", "status": "completed", 
-                    "message": f"Generated {len(diagnosis_result.get('recommendations', []))} recommendations"})
-            except Exception as e:
-                await q.put({"type": "error", "step": "diagnosis_agent", "message": f"Error in diagnosis agent: {str(e)}"})
-                raise
-
-            # Step 5: Dispatch Agent
-            try:
-                await q.put({"type": "step", "step": "dispatch_agent", "status": "started", "message": "Creating service tickets..."})
-                dispatch_result = await dispatch_agent.create_tickets(diagnosis_result)
-                await q.put({"type": "step", "step": "dispatch_agent", "status": "completed", 
-                    "message": f"Created {len(dispatch_result.get('tickets', []))} tickets"})
-            except Exception as e:
-                await q.put({"type": "error", "step": "dispatch_agent", "message": f"Error in dispatch agent: {str(e)}"})
-                raise
-
-            # Step 6: Save Tickets
-            try:
-                await q.put({"type": "step", "step": "save_tickets", "status": "started", "message": "Syncing with external systems..."})
-                tickets = dispatch_result.get("tickets", [])
                 if tickets:
                     await sheets_service.write_service_tickets(tickets)
-                await q.put({"type": "step", "step": "save_tickets", "status": "completed", "message": "Sync complete"})
-            except Exception as e:
-                await q.put({"type": "error", "step": "save_tickets", "message": f"Error saving tickets: {str(e)}"})
-                raise
-
-            # Final Result Payload
-            final_payload = {
-                "monitoring": monitoring_result,
-                "research": research_result,
-                "diagnosis": diagnosis_result,
-                "dispatch": dispatch_result
-            }
-            await q.put({"type": "complete", "data": final_payload})
-
+                    yield f"data: {json.dumps({'type': 'tickets_created', 'tickets': tickets})}\n\n"
+            
+            # Completion
+            yield f"data: {json.dumps({'type': 'complete', 'message': '✅ Multi-agent orchestration complete'})}\n\n"
+            
         except Exception as e:
-            print(f"[ERROR] Stream workflow failed: {str(e)}", flush=True)
+            error_msg = f"Error in orchestration: {str(e)}"
+            print(f"[ERROR] {error_msg}", flush=True)
             import traceback
             traceback.print_exc()
-            await q.put({"type": "error", "message": f"Workflow failed: {str(e)}", "traceback": traceback.format_exc()})
-        finally:
-            await q.put(None)  # Signal generator to stop
+            yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
 
-    # Start the workflow in background
-    asyncio.create_task(run_workflow())
-
-    return StreamingResponse(event_generator(), media_type="text/event-stream")
+    return StreamingResponse(stream_agent_orchestration(), media_type="text/event-stream")
 
 @router.post("/check-fleet")
 async def check_fleet():

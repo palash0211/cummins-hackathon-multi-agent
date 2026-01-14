@@ -1,12 +1,40 @@
 import React, { useEffect, useRef } from 'react';
 import { Search, Brain, Wrench, FileText, Save, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 
-const AgentFeedV2 = ({ messages, isProcessing }) => {
+const AgentFeedV2 = ({ messages, isProcessing, fullHeight = false }) => {
   const feedEndRef = useRef(null);
+  const containerRef = useRef(null);
+  const isUserScrollingRef = useRef(false);
+  const scrollTimeoutRef = useRef(null);
 
   useEffect(() => {
-    feedEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // Only auto-scroll if user is not manually scrolling
+    if (!isUserScrollingRef.current && feedEndRef.current) {
+      feedEndRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    }
   }, [messages]);
+
+  const handleScroll = () => {
+    // User is manually scrolling
+    isUserScrollingRef.current = true;
+    
+    // Clear existing timeout
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+    
+    // Reset after 2 seconds of no scrolling
+    scrollTimeoutRef.current = setTimeout(() => {
+      const container = containerRef.current;
+      if (container) {
+        // Check if user is at the bottom
+        const isAtBottom = Math.abs(container.scrollHeight - container.scrollTop - container.clientHeight) < 10;
+        isUserScrollingRef.current = !isAtBottom;
+      }
+    }, 2000);
+  };
 
   const getIcon = (step) => {
     switch (step) {
@@ -55,7 +83,11 @@ const AgentFeedV2 = ({ messages, isProcessing }) => {
   }
 
   return (
-    <div className="h-[500px] overflow-y-auto pr-2 relative">
+    <div 
+      ref={containerRef}
+      onScroll={handleScroll}
+      className={`${fullHeight ? 'h-full' : 'h-[500px]'} overflow-y-auto pr-2 relative`}
+    >
       <div className="absolute top-4 left-4 h-full w-0.5 bg-gray-200"></div>
       
       <div className="space-y-6 pt-2 pb-6 pl-1">
@@ -77,9 +109,28 @@ const AgentFeedV2 = ({ messages, isProcessing }) => {
                   {msg.timestamp ? new Date(msg.timestamp).toLocaleTimeString() : ''}
                 </div>
               </div>
-              <p className="text-sm text-gray-700 leading-relaxed">
-                {msg.message}
-              </p>
+              <div className="text-sm text-gray-800 leading-relaxed space-y-2">
+                <ReactMarkdown 
+                  remarkPlugins={[remarkGfm]}
+                  components={{
+                    h1: ({node, ...props}) => <h1 className="text-lg font-bold text-gray-900 mb-2" {...props} />,
+                    h2: ({node, ...props}) => <h2 className="text-base font-bold text-gray-900 mb-2" {...props} />,
+                    h3: ({node, ...props}) => <h3 className="text-sm font-bold text-gray-900 mb-1" {...props} />,
+                    p: ({node, ...props}) => <p className="text-gray-800 leading-relaxed mb-2" {...props} />,
+                    ul: ({node, ...props}) => <ul className="list-disc list-inside text-gray-800 space-y-1 ml-2" {...props} />,
+                    ol: ({node, ...props}) => <ol className="list-decimal list-inside text-gray-800 space-y-1 ml-2" {...props} />,
+                    li: ({node, ...props}) => <li className="text-gray-800" {...props} />,
+                    strong: ({node, ...props}) => <strong className="font-bold text-gray-900" {...props} />,
+                    code: ({node, inline, ...props}) => 
+                      inline 
+                        ? <code className="bg-gray-100 text-gray-900 px-1.5 py-0.5 rounded text-xs font-mono" {...props} />
+                        : <code className="block bg-gray-800 text-gray-100 p-2 rounded text-xs font-mono overflow-x-auto" {...props} />,
+                    pre: ({node, ...props}) => <pre className="bg-gray-800 text-gray-100 p-3 rounded overflow-x-auto my-2" {...props} />,
+                  }}
+                >
+                  {msg.message}
+                </ReactMarkdown>
+              </div>
             </div>
           </div>
         ))}

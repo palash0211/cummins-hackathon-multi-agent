@@ -17,15 +17,19 @@ warnings.filterwarnings('ignore', category=InsecureRequestWarning)
 session = requests.Session()
 
 RESEARCH_SYSTEM_PROMPT = """You are a Research Agent specializing in automotive parts intelligence for Cummins diesel engines.
-Given part names, provide comprehensive market intelligence based on web research data.
+Given part names and web research data, provide comprehensive market intelligence with PROPER CITATIONS.
+
+IMPORTANT: For every fact, price, or claim you make, cite the source URL in [brackets] like this:
+- "Part X has an active recall [https://nhtsa.gov/recalls/ABC123]"
+- "Market price ranges from $200-$350 [https://autozone.com/part-x]"
 
 Analyze for:
-- Recall status (active/none/cleared)
-- Market pricing estimates
-- Common failure patterns
+- Recall status with citation
+- Market pricing with sources
+- Common failure patterns with references
 - Recommended suppliers
 - Critical maintenance tips
-- Urgency multiplier based on external factors
+- Urgency multiplier
 
 Respond ONLY in valid JSON:
 {
@@ -33,13 +37,16 @@ Respond ONLY in valid JSON:
     {
       "part_name": "",
       "recall_status": "active|none|cleared",
-      "recall_details": "",
-      "market_price": "$X-$Y",
-      "failure_patterns": ["pattern1", "pattern2"],
-      "suppliers": ["supplier1", "supplier2"],
-      "maintenance_tips": "",
+      "recall_details": "Details with [citation_url] inline",
+      "market_price": "$X-$Y [source_url]",
+      "failure_patterns": ["Pattern description [source_url]"],
+      "suppliers": ["Supplier name [website_url]"],
+      "maintenance_tips": "Tips with [citation_url]",
       "urgency_multiplier": 1.0,
       "web_sources_checked": 0,
+      "citations": [
+        {"url": "https://...", "title": "Source title", "relevance": "What info was extracted"}
+      ],
       "sources_scraped": []
     }
   ],
@@ -47,7 +54,8 @@ Respond ONLY in valid JSON:
     "total_parts_researched": 0,
     "parts_with_recalls": 0,
     "total_sources_checked": 0,
-    "data_freshness": "2024-01-12"
+    "data_freshness": "2024-01-14",
+    "total_citations": 0
   }
 }"""
 
@@ -207,8 +215,8 @@ async def search_and_scrape_part(part_name: str, stream_callback=None) -> Dict:
             part_data["searches_performed"] += 1
             part_data["sources_checked"] += len(results)
             
-            # Scrape top 2 results
-            for result in results[:2]:
+            # Scrape top 5 results for comprehensive research
+            for result in results[:5]:
                 try:
                     url = result.get("url", "")
                     content = await scrape_url(url)
@@ -250,9 +258,38 @@ async def search_and_scrape_part(part_name: str, stream_callback=None) -> Dict:
     return part_data
 
 async def perform_search(query: str) -> List[Dict]:
-    """Perform web search using multiple strategies"""
+    """Perform web search using open-source/free strategies"""
     
-    # Strategy 1: Try Brave Search API if configured
+    # Strategy 1: DuckDuckGo HTML scraping (FREE, no API key needed)
+    try:
+        results = await search_with_duckduckgo(query)
+        if results:
+            print(f"✅ DuckDuckGo Search: {len(results)} results")
+            return results
+    except Exception as e:
+        print(f"⚠️  DuckDuckGo failed: {e}")
+    
+    # Strategy 2: Google HTML scraping (FREE but may get blocked, use sparingly)
+    try:
+        results = await search_with_google_scraping(query)
+        if results:
+            print(f"✅ Google Scraping: {len(results)} results")
+            return results
+    except Exception as e:
+        print(f"⚠️  Google scraping failed: {e}")
+    
+    # Strategy 3: Try SerpAPI if configured (PAID, optional)
+    serpapi_key = os.getenv("SERPAPI_KEY")
+    if serpapi_key and serpapi_key != "your-serpapi-key-here":
+        try:
+            results = await search_with_serpapi(query, serpapi_key)
+            if results:
+                print(f"✅ Google Search (SerpAPI): {len(results)} results")
+                return results
+        except Exception as e:
+            print(f"⚠️  SerpAPI failed: {e}")
+    
+    # Strategy 4: Try Brave Search API (PAID, optional)
     brave_api_key = os.getenv("BRAVE_API_KEY")
     if brave_api_key and brave_api_key != "your-brave-api-key-here":
         try:
@@ -263,18 +300,7 @@ async def perform_search(query: str) -> List[Dict]:
         except Exception as e:
             print(f"⚠️  Brave failed: {e}")
     
-    # Strategy 2: Try SerpAPI if configured  
-    serpapi_key = os.getenv("SERPAPI_KEY")
-    if serpapi_key and serpapi_key != "your-serpapi-key-here":
-        try:
-            results = await search_with_serpapi(query, serpapi_key)
-            if results:
-                print(f"✅ SerpAPI: {len(results)} results")
-                return results
-        except Exception as e:
-            print(f"⚠️  SerpAPI failed: {e}")
-    
-    # Strategy 3: Direct website scraping (most reliable for demo)
+    # Strategy 5: Direct website search (last resort)
     try:
         results = await direct_website_search(query)
         if results:
@@ -284,6 +310,116 @@ async def perform_search(query: str) -> List[Dict]:
         print(f"⚠️  Direct search failed: {e}")
     
     print(f"❌ All search strategies failed for: {query[:50]}")
+    return []
+
+async def search_with_google_scraping(query: str) -> List[Dict]:
+    """Search using Google HTML scraping (FREE open-source solution)
+    Note: May get blocked by Google if used too frequently. Use rate limiting."""
+    try:
+        # Add random delay to avoid rate limiting
+        time.sleep(random.uniform(1.0, 2.5))
+        
+        url = "https://www.google.com/search"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1'
+        }
+        params = {'q': query, 'num': 10}
+        
+        response = session.get(url, headers=headers, params=params, timeout=10)
+        
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            results = []
+            
+            # Find search result divs
+            search_results = soup.find_all('div', class_='g')
+            
+            for result in search_results[:8]:
+                # Extract title
+                title_elem = result.find('h3')
+                if not title_elem:
+                    continue
+                    
+                title = title_elem.get_text(strip=True)
+                
+                # Extract URL
+                link_elem = result.find('a')
+                url = link_elem.get('href', '') if link_elem else ''
+                
+                # Extract snippet
+                snippet_elem = result.find('div', class_=['VwiC3b', 'yXK7lf'])
+                snippet = snippet_elem.get_text(strip=True) if snippet_elem else ''
+                
+                if title and url:
+                    results.append({
+                        "title": title,
+                        "url": url,
+                        "snippet": snippet
+                    })
+            
+            if results:
+                print(f"[INFO] Scraped {len(results)} results from Google")
+                return results
+        else:
+            print(f"[WARN] Google returned status {response.status_code}")
+            
+    except Exception as e:
+        print(f"[ERROR] Google scraping failed: {str(e)}")
+    return []
+
+async def search_with_duckduckgo(query: str) -> List[Dict]:
+    """Search using DuckDuckGo HTML scraping (FREE open-source solution, no API key)"""
+    try:
+        # Add small delay to be respectful
+        time.sleep(random.uniform(0.5, 1.5))
+        
+        url = "https://html.duckduckgo.com/html/"
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml',
+            'Accept-Language': 'en-US,en;q=0.9'
+        }
+        data = {'q': query, 'b': ''}
+        
+        response = requests.post(url, headers=headers, data=data, timeout=12)
+        
+        if response.status_code == 200:
+            soup = BeautifulSoup(response.text, 'html.parser')
+            results = []
+            
+            # Find all result divs
+            for result in soup.find_all('div', class_='result')[:10]:
+                title_elem = result.find('a', class_='result__a')
+                snippet_elem = result.find('a', class_='result__snippet')
+                
+                if title_elem:
+                    url = title_elem.get('href', '')
+                    # DuckDuckGo uses redirect URLs, extract real URL
+                    if url.startswith('//duckduckgo.com/l/?'):
+                        import urllib.parse
+                        parsed = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+                        url = parsed.get('uddg', [''])[0]
+                    
+                    results.append({
+                        "title": title_elem.get_text(strip=True),
+                        "url": url,
+                        "snippet": snippet_elem.get_text(strip=True) if snippet_elem else ""
+                    })
+            
+            if results:
+                print(f"[INFO] DuckDuckGo returned {len(results)} results")
+                return results
+        else:
+            print(f"[WARN] DuckDuckGo returned status {response.status_code}")
+            
+    except Exception as e:
+        print(f"[ERROR] DuckDuckGo search failed: {str(e)}")
     return []
 
 async def search_with_brave(query: str, api_key: str) -> List[Dict]:
@@ -310,25 +446,46 @@ async def search_with_brave(query: str, api_key: str) -> List[Dict]:
     return []
 
 async def search_with_serpapi(query: str, api_key: str) -> List[Dict]:
-    """Search using SerpAPI"""
+    """Search using SerpAPI (Google Search) - Returns real Google results"""
     url = "https://serpapi.com/search"
     params = {
         "q": query,
         "api_key": api_key,
-        "num": 5
+        "engine": "google",
+        "num": 10,  # Get more results
+        "gl": "us",  # Google location
+        "hl": "en"   # Language
     }
     
-    response = requests.get(url, params=params, timeout=10)
-    if response.status_code == 200:
-        data = response.json()
-        results = []
-        for item in data.get("organic_results", [])[:5]:
-            results.append({
-                "title": item.get("title", ""),
-                "url": item.get("link", ""),
-                "snippet": item.get("snippet", "")
-            })
-        return results
+    try:
+        response = requests.get(url, params=params, timeout=15)
+        if response.status_code == 200:
+            data = response.json()
+            results = []
+            
+            # Get organic results
+            for item in data.get("organic_results", [])[:8]:
+                results.append({
+                    "title": item.get("title", ""),
+                    "url": item.get("link", ""),
+                    "snippet": item.get("snippet", ""),
+                    "position": item.get("position", 0)
+                })
+            
+            # Also check answer box / featured snippet
+            if data.get("answer_box"):
+                answer = data["answer_box"]
+                results.insert(0, {
+                    "title": answer.get("title", "Featured Snippet"),
+                    "url": answer.get("link", ""),
+                    "snippet": answer.get("snippet", answer.get("answer", "")),
+                    "position": 0,
+                    "featured": True
+                })
+            
+            return results
+    except Exception as e:
+        print(f"[ERROR] SerpAPI request failed: {str(e)}")
     return []
 
 async def direct_website_search(query: str) -> List[Dict]:

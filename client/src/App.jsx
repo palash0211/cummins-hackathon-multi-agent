@@ -1,5 +1,5 @@
 import React, { useState } from 'react'
-import DashboardV2 from './components/DashboardV2'
+import DashboardNewView from './components/DashboardNewView'
 import DetailedReportV2 from './components/DetailedReportV2'
 import { FileText, LayoutDashboard } from 'lucide-react'
 
@@ -50,13 +50,13 @@ function App() {
       </nav>
 
       {/* Page Content */}
-      <div className="p-6 max-w-7xl mx-auto">
-        {currentPage === 'dashboard' ? (
-          <DashboardV2 onReportDataUpdate={setReportData} />
-        ) : (
+      {currentPage === 'dashboard' ? (
+        <DashboardNewView />
+      ) : (
+        <div className="p-6 max-w-7xl mx-auto">
           <DetailedReportV2 {...reportData} />
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
