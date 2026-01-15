@@ -1,7 +1,8 @@
 import React, { useState } from 'react'
 import DashboardNewView from './components/DashboardNewView'
 import DetailedReportV2 from './components/DetailedReportV2'
-import { FileText, LayoutDashboard } from 'lucide-react'
+import PitchDeck from './components/PitchDeck'
+import { FileText, LayoutDashboard, Presentation } from 'lucide-react'
 
 function App() {
   const [currentPage, setCurrentPage] = useState('dashboard')
@@ -45,18 +46,29 @@ function App() {
               <FileText className="w-5 h-5" />
               <span>Detailed Report</span>
             </button>
+            <button
+              onClick={() => setCurrentPage('pitch')}
+              className={`px-4 py-2 rounded-lg font-bold transition-all flex items-center space-x-2 shadow-sm ${
+                currentPage === 'pitch'
+                  ? 'bg-white text-red-700 shadow-inner'
+                  : 'bg-yellow-400 text-red-900 hover:bg-yellow-300'
+              }`}
+            >
+              <Presentation className="w-5 h-5" />
+              <span>Pitch Deck</span>
+            </button>
           </div>
         </div>
       </nav>
 
       {/* Page Content */}
-      {currentPage === 'dashboard' ? (
-        <DashboardNewView />
-      ) : (
+      {currentPage === 'dashboard' && <DashboardNewView />}
+      {currentPage === 'report' && (
         <div className="p-6 max-w-7xl mx-auto">
           <DetailedReportV2 {...reportData} />
         </div>
       )}
+      {currentPage === 'pitch' && <PitchDeck />}
     </div>
   )
 }
