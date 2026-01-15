@@ -82,13 +82,18 @@ Initial feedback confirms strong demand for proactive maintenance.
 ---
 
 ## 7. Market Opportunity
-We start with mid-sized commercial fleets.
+**Cummins Initiative** → Expanding to Cummins Customer Base
 
-- 3.5M commercial trucks in North America
-- Initial target: fleets with 50–300 vehicles
-- Expansion path: enterprise fleets and OEM partnerships
+- 600,000+ Cummins engines worldwide already equipped with Connected Diagnostics™
+- Direct integration with Cummins Guidanz™ platform
+- Immediate rollout to Cummins dealership network and service centers
+- Upsell opportunity for existing Cummins fleet customers
 
-A large, recurring SaaS market with high willingness to pay.
+**Value Proposition:**
+- Strengthen Cummins' position as a complete solutions provider, not just hardware
+- Reduce warranty claims through proactive maintenance
+- Increase customer retention and lifetime value
+- New recurring revenue stream from software services
 
 ---
 
@@ -103,6 +108,7 @@ Today's options fall short:
 - Actionable recommendations, not alerts
 - No additional hardware required
 
+---
 
 ## 9. Why We Win
 - Deep understanding of fleet maintenance workflows
@@ -111,6 +117,8 @@ Today's options fall short:
 - Built for speed, simplicity, and fast deployment
 
 Execution matters more than flashy features.
+
+---
 
 ## 10. Vision
 We're building the system fleets rely on to prevent breakdowns entirely.
